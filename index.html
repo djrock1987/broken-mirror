@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="StackBlur.js"></script>
+</head>
+<body>
+<video autoplay style="display: none;"></video>
+<canvas id="raw_canvas" style="display: none;"></canvas>
+<canvas id="hidden_canvas" style="display: none;"></canvas>
+<canvas id="real_canvas"></canvas>
+<script>
+var video = document.querySelector('video');
+var c1 = document.getElementById('hidden_canvas');
+var c2 = document.getElementById('real_canvas');
+var c3 = document.getElementById('raw_canvas');
+var rawCtx = c3.getContext('2d');
+var hiddenCtx = c1.getContext('2d');
+var ctx = c2.getContext('2d');
+var localMediaStream = null;
+
+var VIDEO_SCALE = 5.0;
+
+var snapshot = function() {
+  if (localMediaStream) {
+    if (video.videoWidth > 0) {
+      // Draw the image from the video onto the base hidden canvas
+      rawCtx.drawImage(video, 0, 0, video.videoWidth / VIDEO_SCALE, video.videoHeight / VIDEO_SCALE);
+      hiddenCtx.drawImage(rawCtx.canvas, 0, 0, video.videoWidth, video.videoWidth);
+      stackBlurCanvasRGBA('hidden_canvas', 0, 0, video.videoWidth, video.videoHeight, 10);
+      // Blur it!
+      // Get the data from it and let's play
+      var frame = hiddenCtx.getImageData(0, 0, video.videoWidth, video.videoHeight);
+      targetColumn = frame.width / 2.0;
+      // first let's get the pixels for all the rows in that column.
+      columnData = []
+      for (row = 0; row < frame.height; row++) {
+        r = frame.data[((row * (frame.width * 4)) + (targetColumn * 4)) + 0];
+        g = frame.data[((row * (frame.width * 4)) + (targetColumn * 4)) + 1];
+        b = frame.data[((row * (frame.width * 4)) + (targetColumn * 4)) + 2];
+        a = frame.data[((row * (frame.width * 4)) + (targetColumn * 4)) + 3];
+        
+        l = (r + g + b) / 3;
+        
+        columnData.push(l);
+        columnData.push(l);
+        columnData.push(l);
+        columnData.push(a);
+      }
+      // Then let's go through all columns to the left of that and replace every row to match the row of our specified column.
+      for (col = 0; col < targetColumn; col++ ){
+        for (row = 0; row < frame.height; row++) {
+          frame.data[((row * (frame.width * 4)) + (col * 4)) + 0] = columnData[(row * 4) + 0];
+          frame.data[((row * (frame.width * 4)) + (col * 4)) + 1] = columnData[(row * 4) + 1];
+          frame.data[((row * (frame.width * 4)) + (col * 4)) + 2] = columnData[(row * 4) + 2];
+          frame.data[((row * (frame.width * 4)) + (col * 4)) + 3] = columnData[(row * 4) + 3];
+        }
+      }
+      ctx.putImageData(frame, 0, 0);
+    }
+  }
+}
+
+navigator.getUserMedia = navigator.getUserMedia ||
+  navigator.webkitGetUserMedia ||
+  navigator.mozGetUserMedia;
+
+navigator.getUserMedia({
+  video: true
+}, function(stream) {
+  video.src = window.URL.createObjectURL(stream);
+  video.onloadedmetadata = function(e) {
+    c1.width = video.videoWidth;
+    c1.height = video.videoHeight;
+    c2.width = video.videoWidth;
+    c2.height = video.videoHeight;
+    c3.width = video.videoWidth / VIDEO_SCALE;
+    c3.height = video.videoHeight / VIDEO_SCALE;
+  }
+  localMediaStream = stream;
+  window.setInterval(snapshot, 100);
+}, function(e) {
+  console.log(e);
+});
+</script>
+</body>
+</html>
